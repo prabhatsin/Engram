@@ -57,22 +57,26 @@ def conversation_loop():
                 if step.type=='function_call':
                     print('function to call :',step.name)
                     print(f"arguments: {step.arguments}")
-                    # Trying to handle the key error i.e what if key not present
-                    try:
+                    # checking if the called tool exist or not in the TOOLS dict
+                    if step.name not in TOOLS:
+                        result=f"The tool :{[step.name]} does not exist. Available tools are {list(TOOLS.keys())}"
+                        is_error=True
+                    else:
                         tool=TOOLS[step.name] # <-- LOOKUP
-                        result=tool(**step.arguments) # <-- EXECUTION
-                        is_error=False
-                    # Trying to handle the key error i.e what if key not present
-                    except KeyError :
-                        result=f"The tool{step.name} does not exist"
-                        is_error=True
-                    #Raised when a function is called with the wrong arguments 
-                    except TypeError as e:
-                        result=f"Invalid arguments for {step.name} :{e} tool"
-                        is_error=True
-                    except Exception as e:
-                        result=f"Error {e} occured"
-                        is_error=True
+                        try:
+                            result=tool(**step.arguments) # <-- EXECUTION
+                            is_error=False
+                        # Trying to handle the key error i.e what if key not present
+                        except KeyError :
+                            result=f"The tool{step.name} does not exist"
+                            is_error=True
+                        #Raised when a function is called with the wrong arguments 
+                        except TypeError as e:
+                            result=f"Invalid arguments for {step.name} :{e} tool"
+                            is_error=True
+                        except Exception as e:
+                            result=f"Error {e} occured"
+                            is_error=True
 
                     
 
