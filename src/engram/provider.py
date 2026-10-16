@@ -32,5 +32,13 @@ def ask(prompt):
         raise ProviderError("Prompt is empty.")
     client=get_client()
     response=client.models.generate_content(model=config.MODEL,contents=prompt)
-    return response.text
+    text =response.text
+    if not text or not text.strip():
+        reason=None
+        if response.prompt_feedback:
+            reason=response.prompt_feedback.block_reason
+        if not reason and response.candidates:
+            reason=response.candidates[0].finish_reason
+        raise ProviderError(f"Empty response from model (reason: {reason}).")
+    return text
 
