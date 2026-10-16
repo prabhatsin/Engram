@@ -1,0 +1,1 @@
+# Allow, deny or ask-the-user decisions, checked before every tool run
