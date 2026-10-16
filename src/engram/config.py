@@ -13,3 +13,4 @@ MODEL = os.getenv("ENGRAM_MODEL", "gemini-3.8-flash")
 MAX_RETRIES = 3
 TIMEOUT_SECONDS = 30
 
+BASE_DELAY=2
