@@ -2,3 +2,4 @@ google-genai
 rich>=13
 python-dotenv>=1.0
 pytest
+pydantic

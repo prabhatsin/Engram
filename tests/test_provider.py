@@ -28,7 +28,6 @@ def test_missing_key(monkeypatch):
 
 #! NOTE: The fake_client helper replaces the real Gemini client, so these tests run offline and instantly. We’ll reuse it for the retry tests
 
-
 def fake_client(response):
     models = SimpleNamespace(generate_content=lambda **kw: response)
     return SimpleNamespace(models=models)
@@ -125,3 +124,50 @@ def test_invalid_key_fails_clearly_and_is_not_retried(monkeypatch):
     with pytest.raises(provider.ProviderError, match="API error"):
         provider.generate_text("hi")
     assert sleeps == []
+
+
+
+#------------------------------------------------------------------------------
+# Now the offline tests for chat(), which reuse your fake_client helper.
+
+
+def fake_chat_response(text=None, calls=None, feedback=None, finish="STOP"):
+    content = SimpleNamespace(role="model")
+    cand = SimpleNamespace(content=content, finish_reason=finish)
+    return SimpleNamespace(text=text, function_calls=calls,
+                           prompt_feedback=feedback, candidates=[cand])
+
+def use(monkeypatch, resp):
+    monkeypatch.setattr(provider, "get_client", lambda: fake_client(resp))
+
+def test_chat_empty_history():
+    with pytest.raises(provider.ProviderError):
+        provider.chat([])
+
+def test_chat_text_reply(monkeypatch):
+    use(monkeypatch, fake_chat_response(text="done"))
+    result = provider.chat(["hi"])
+    assert result["text"] == "done"
+    assert result["tool_calls"] == []
+
+def test_chat_tool_call(monkeypatch):
+    call = SimpleNamespace(name="read_file", args={"path": "a.py"})
+    use(monkeypatch, fake_chat_response(calls=[call]))
+    result = provider.chat(["hi"])
+    assert result["text"] is None
+    assert result["tool_calls"] == [{"name": "read_file", "args": {"path": "a.py"}}]
+
+def test_chat_tool_call_with_no_args(monkeypatch):
+    call = SimpleNamespace(name="list_files", args=None)
+    use(monkeypatch, fake_chat_response(calls=[call]))
+    assert provider.chat(["hi"])["tool_calls"][0]["args"] == {}
+
+def test_chat_empty_response_reports_reason(monkeypatch):
+    use(monkeypatch, fake_chat_response(text=None, finish="SAFETY"))
+    with pytest.raises(provider.ProviderError, match="SAFETY"):
+        provider.chat(["hi"])
+
+def test_chat_returns_model_content_untouched(monkeypatch):
+    resp = fake_chat_response(text="ok")
+    use(monkeypatch, resp)
+    assert provider.chat(["hi"])["content"] is resp.candidates[0].content

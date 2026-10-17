@@ -14,3 +14,10 @@ MAX_RETRIES = 3
 TIMEOUT_SECONDS = 30
 
 BASE_DELAY=2
+
+MAX_STEPS = 15
+
+
+from pathlib import Path
+
+SYSTEM_PROMPT = (Path(__file__).parent / "prompts" / "system.md").read_text()

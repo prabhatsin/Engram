@@ -1,0 +1,14 @@
+[project]
+name = "engram"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    "google-genai",
+    "python-dotenv",
+    "pydantic",
+    "httpx",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

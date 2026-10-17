@@ -35,7 +35,7 @@ def get_client():
 #!---------------------------------------------------------------------------
 RETRYABLE_CODES = {429, 500, 502, 503, 504}
 # The list of error codes worth retrying: rate limit (429) and server-side problems (5xx).
-def call_with_retry(client, prompt):
+def call_with_retry(client, contents,gen_config=None):
     '''
     calls Gemini, retrying temporary failures, and raises ProviderError if it gives up
     or hits a permanent error.
@@ -45,7 +45,7 @@ def call_with_retry(client, prompt):
     attempts = config.MAX_RETRIES + 1
     for attempt in range(attempts):
         try:
-            return client.models.generate_content(model=config.MODEL, contents=prompt)
+            return client.models.generate_content(model=config.MODEL, contents=contents,config=gen_config)
         except errors.APIError as e:
             if e.code not in RETRYABLE_CODES:
                 raise ProviderError(f"API error {e.code}: {e.message}") from e
@@ -108,6 +108,120 @@ MAX_TOKENS: you set a low output limit (say 50 tokens) and asked for a long essa
 RECITATION: the model was about to output text too close to copyrighted material, so it stopped.
 
 ''' 
+def chat(history, tools=None):
+    #tools=None exists only so a plain "no-tools" call is also possible !
+
+    if not history:
+        raise ProviderError("History is empty.")
+    client = get_client()
+    # Build the request config. Attach tools only if some were provided by caller (loop)
+    # The caller is the loop here 
+    if tools:
+        tool_config = [types.Tool(function_declarations=tools)]
+    else:
+        tool_config = None
+
+    gen_config = types.GenerateContentConfig(
+        tools=tool_config,
+        system_instruction=config.SYSTEM_PROMPT)
+
+    # Call Gemini (with retries on temporary failures).
+    response = call_with_retry(client, history, gen_config)
+    # Collect any tool calls the model asked for.
+    function_calls = response.function_calls
+    if function_calls is None:
+        function_calls = []
+    # Read text only when there are no tool calls (avoids an SDK warning).
+    if function_calls:
+        text = None
+    else:
+        text = response.text
+    has_text = bool(text and text.strip())
+    # Empty only if the model gave neither text nor tool calls.
+    # (Empty text alone is fine, since a tool-call reply has no text.)
+    if not has_text and not function_calls:
+        reason = None
+        # Find out why: blocked prompt first, then the finish reason
+        if response.prompt_feedback:
+            reason = response.prompt_feedback.block_reason
+        if not reason and response.candidates:
+            reason = response.candidates[0].finish_reason
+        raise ProviderError(f"Empty response from model (reason: {reason}).")
+
+    # Convert each call into a plain dict: {"name": ..., "args": {...}}.
+    tool_calls = [] # This list is used to simply collect list of dictsv with each dict having function name and args
+
+    ## Convert each Gemini FunctionCall (name + args) into a plain {"name", "args"} dict.
+    for function_call in function_calls:
+        # function_call is Gemini's own FunctionCall object containing (tool name + args)
+        if function_call.args is None:
+            args = {}
+        else:
+            args = dict(function_call.args)
+        tool_calls.append({"name": function_call.name, "args": args})
+
+    return {
+        "text": text,
+        "tool_calls": tool_calls,
+        "content": response.candidates[0].content,
+        # content is only for storing, passed back to Gemini exactly as it arrived.
+    }
+
+
+
+# when the model decides to use a tool, its reply contains a part holding function_calls , It is the SDK’s shortcut that gathers all of them into a list.
+
+
+
+
+#?Question: explore whats this content , when awe already have text and tool calls  and what exacly goes in the history ??
+
+
+'''
+When we want to merge into history whatever we got from the LLM text or tool_call we need it in the format 
+
+{
+"role":"model",
+parts......
+
+}
+
+this we get from the "content": response.candidates[0].content
+
+#! The Nesting is :
+response
+  └─ candidates[0]
+       └─ content
+            ├─ role = "model"
+            └─ parts = [ Part(text="..."), Part(function_call=...), ... ]
+
+'''
+
+'''
+
+=>Because text and tool_calls are your own simplified copies, and Gemini needs its original message 
+format back in the history.
+
+=>Format: history has to hold Gemini Content objects. A dict like {"name": "book_slot", "args": {...}} isn’t one, so you’d have to rebuild the Content and Part objects by hand.
+
+=>Lost details: the raw message can carry things your dicts drop. The main one is thought signatures, which newer Gemini models attach to function calls and expect to see again on the next request. If you rebuild the message without them, the model can lose its reasoning context or the API can reject the request.
+
+=>Mixed replies: a single reply can contain text and several tool calls in a specific order. Rebuilding from text and tool_calls can change that order.
+
+'''
+#! Summary
+'''
+So the split is: text and tool_calls are for your loops decisions (show the answer, or run these
+ tools), and content is only for storing, passed back to Gemini exactly as it arrived.
+'''
+
+
+
+
+
+
+
+
 
 if __name__=='__main__':
     generate_text("Hey how are u")
