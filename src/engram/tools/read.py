@@ -1,32 +1,29 @@
 
 #? What real agents do: the common pattern is keeping the schema next to the function and we are doingt same here 
 #? keeping the function and schema together 
+
 from pydantic import BaseModel,Field
 from  .tool import make_tool
-
+import os
 class ReadArgs(BaseModel):
-    path: str = Field(description="File path")
+    path: str = Field(description="File path")## Field(description=...) attaches the explanation the model will read.
 
-# Field(description=...) attaches the explanation the model will read.
-
-# Pydantic reads the class and generates a dict:
-# parameters = ReadArgs.model_json_schema()   # <- generated, not typed
-
-'''
-earlier we used to manually type and create , now pydantic does it for us , reducing the chances of error
-
-{
-  "type": "object",
-  "properties": {"path": {"type": "string", "description": "File path"}},
-  "required": ["path"],
-}
-'''
 
 # This is the core / real functiomn that actually reads the file ,:
-def read_file(path):
-    with open(path, "r", encoding="utf-8") as f:
-        return f.read()
 
+def read_file(path):
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"File not found: {path}")
+    if os.path.isdir(path):
+        raise IsADirectoryError(f"'{path}' is a directory, not a file")
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            text = f.read()
+    except UnicodeDecodeError:
+        raise ValueError(f"'{path}' is not a UTF-8 text file (it looks binary)")
+    if "\x00" in text:
+        raise ValueError(f"'{path}' is not a text file (it contains null bytes)")
+    return text
 
 ## READ_FILE: the read_file tool, bundling what goes to LLM(via declaration) 
 # (name, description, argument schema) plus (+) the function that actually runs it.
@@ -34,7 +31,8 @@ READ_FILE=make_tool(
     name='read_file',
     description="Read a text file and return its contents.",
     args_model=ReadArgs,
-    func=read_file
+    func=read_file,
+    path_fields=("path",),
 )
 
 
@@ -46,9 +44,9 @@ READ_FILE=make_tool(
 
 
 
-#? Doubts whats this execute=read_file ?? 
+#? Doubts whats this func=read_file ?? 
 
-# execute=read_file stores the real function inside the tool, so the separate name-to-function mapping 
+# func=read_file stores the real function inside the tool, so the separate name-to-function mapping 
 # isn’t needed anymore
 '''
 Your old way (two places):
@@ -81,3 +79,20 @@ it does, and a schema of its arguments.
 
 '''
 # A schema is a structured description of the shape of some data: what fields it has, what type each one is, and which are required.
+
+
+
+# Field(description=...) attaches the explanation the model will read.
+
+# Pydantic reads the class and generates a dict:
+# parameters = ReadArgs.model_json_schema()   # <- generated, not typed
+
+'''
+earlier we used to manually type and create , now pydantic does it for us , reducing the chances of error
+
+{
+  "type": "object",
+  "properties": {"path": {"type": "string", "description": "File path"}},
+  "required": ["path"],
+}
+'''

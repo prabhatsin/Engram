@@ -5,15 +5,24 @@ Layer 2: what's left
 Loop hardening (loop.py)
 
 1.Step limit: code given, so confirm that 3 tests pass.
+#TODO:#?Didnt applied
 2.Unknown tool name: return an error message to the model.
+#? Done
 3.Bad or missing arguments: validate with args_model and return the error to the model.
+#? Done
 4.Tool exceptions (file not found and so on): catch them and return the error text to the model.
+#? Done
 5.Repeated identical failing call: detect it and stop.
+#TODO:#?Didnt applied
 6.Provider errors mid-loop: stop with a clean message.
+#? Done
+
 
 read_file hardening (tools/read.py)
 7. File not found, a directory instead of a file, and binary files.
+#? Done
 8. Huge files: truncate the output with a note.
+#TODO:#?Didnt applied
 
 Guard (guard.py)
 9. Path check: block anything outside the repo folder, and call it before every tool runs.

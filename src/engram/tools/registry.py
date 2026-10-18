@@ -1,7 +1,9 @@
 from .read import READ_FILE
+from .search import FIND_FILES, SEARCH_TEXT
 from .tool import declaration
 
-TOOLS=[READ_FILE]
+TOOLS=[READ_FILE,FIND_FILES, SEARCH_TEXT]
+
 
 # Its the lookup function : it takes a name string(sent by model) and returns the matching tool
 def get_tool(name):
@@ -19,3 +21,8 @@ def all_declarations():
     for tool in TOOLS:
         result.append(declaration(tool))
     return result
+
+
+def available_tool_names():
+    """Lists the avauilable tool names """
+    return [tool["name"] for tool in TOOLS]

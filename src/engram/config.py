@@ -21,3 +21,26 @@ MAX_STEPS = 15
 from pathlib import Path
 
 SYSTEM_PROMPT = (Path(__file__).parent / "prompts" / "system.md").read_text()
+
+
+#---guard.py------------
+
+from pathlib import Path
+
+REPO_ROOT = Path(os.getenv("ENGRAM_REPO", os.getcwd())).resolve()
+BLOCKED_NAMES = {".env", ".git"}
+
+#-----search tool---
+
+MAX_FIND_RESULTS = 200
+MAX_SEARCH_RESULTS = 100
+MAX_LINE_CHARS = 200
+MAX_SEARCH_FILE_BYTES = 1_000_000  #1mb
+
+SKIP_DIRS = {".git", "node_modules", "__pycache__", "myenv",  ".venv", "venv", ".pytest_cache"}
+
+RG_TIMEOUT_SECONDS = 15
+
+#-----------write tool-----------------
+
+MAX_WRITE_CHARS = 200_000

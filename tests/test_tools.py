@@ -33,3 +33,38 @@ def test_get_tool_finds_tool_that_is_not_first(monkeypatch):
 def test_args_model_rejects_missing_path():
     with pytest.raises(ValidationError):
         ReadArgs()
+
+def test_tool_names():
+    assert registry.available_tool_names() == ["read_file"]
+
+from engram.tools.read import read_file
+
+def test_read_missing_file(tmp_path):
+    with pytest.raises(FileNotFoundError, match="nope.txt"):
+        read_file(str(tmp_path / "nope.txt"))
+
+def test_read_directory(tmp_path):
+    with pytest.raises(IsADirectoryError):
+        read_file(str(tmp_path))
+
+def test_read_binary_file(tmp_path):
+    f = tmp_path / "img.bin"
+    f.write_bytes(b"\xff\xfe\x00\x01")
+    with pytest.raises(ValueError, match="binary|null"):
+        read_file(str(f))
+
+def test_read_file_with_null_bytes(tmp_path):
+    f = tmp_path / "a.dat"
+    f.write_bytes(b"abc\x00def")
+    with pytest.raises(ValueError, match="null bytes"):
+        read_file(str(f))
+
+def test_read_empty_file(tmp_path):
+    f = tmp_path / "empty.txt"
+    f.write_text("")
+    assert read_file(str(f)) == ""
+
+def test_read_unicode_file(tmp_path):
+    f = tmp_path / "u.txt"
+    f.write_text("नमस्ते", encoding="utf-8")
+    assert read_file(str(f)) == "नमस्ते"
