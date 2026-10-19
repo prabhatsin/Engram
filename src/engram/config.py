@@ -15,8 +15,9 @@ TIMEOUT_SECONDS = 30
 
 BASE_DELAY=2
 
-MAX_STEPS = 15
 
+MAX_STEPS = 25
+MAX_REPEATS = 3
 
 from pathlib import Path
 

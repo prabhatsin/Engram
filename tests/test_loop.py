@@ -6,6 +6,8 @@ from engram import loop, provider
 from engram.tools import registry
 from engram.tools.tool import make_tool
 from engram.tools.read import ReadArgs
+
+
 def reply(text=None, calls=None):
     return {"text": text, "tool_calls": calls or [], "content": SimpleNamespace(role="model")}
 
@@ -209,6 +211,7 @@ def test_write_file_does_not_overwrite_by_default(monkeypatch, repo_root):
 def test_write_file_overwrite_flag_works(monkeypatch, repo_root):
     (repo_root / "a.txt").write_text("original")
     script(monkeypatch, [
+        reply(calls=[{"name": "read_file", "args": {"path": "a.txt"}}]),
         reply(calls=[{"name": "write_file", "args": {"path": "a.txt", "content": "new", "overwrite": True}}]),
         reply(text="ok"),
     ])
@@ -296,3 +299,137 @@ def test_edit_env_file_is_blocked(monkeypatch, repo_root):
     assert loop.run_agent("go") == "ok"
     assert "protected" in sent_back_after(seen)["error"]
     assert (repo_root / ".env").read_text() == "KEY=1"
+
+from engram import approval
+
+def test_bash_safe_command_through_the_loop(monkeypatch):
+    seen = script(monkeypatch, [
+        reply(calls=[{"name": "bash", "args": {"command": "pwd"}}]),
+        reply(text="ok"),
+    ])
+    assert loop.run_agent("go") == "ok"
+    assert sent_back_after(seen)["result"].startswith("exit code: 0")
+
+def test_bash_dangerous_command_is_reported(monkeypatch):
+    seen = script(monkeypatch, [
+        reply(calls=[{"name": "bash", "args": {"command": "sudo rm -rf /"}}]),
+        reply(text="ok"),
+    ])
+    assert loop.run_agent("go") == "ok"
+    assert "refused" in sent_back_after(seen)["error"]
+
+def test_bash_declined_command_is_reported_and_not_run(monkeypatch, repo_root):
+    monkeypatch.setattr(approval, "ask", lambda c: False)
+    seen = script(monkeypatch, [
+        reply(calls=[{"name": "bash", "args": {"command": "touch marker.txt"}}]),
+        reply(text="ok"),
+    ])
+    assert loop.run_agent("go") == "ok"
+    assert "declined" in sent_back_after(seen)["error"]
+    assert not (repo_root / "marker.txt").exists()
+
+def test_bash_cannot_read_env_file(monkeypatch, repo_root):
+    (repo_root / ".env").write_text("SECRET=abc")
+    seen = script(monkeypatch, [
+        reply(calls=[{"name": "bash", "args": {"command": "cat .env"}}]),
+        reply(text="ok"),
+    ])
+    assert loop.run_agent("go") == "ok"
+    sent_back = sent_back_after(seen)
+    assert "refused" in sent_back["error"]
+    assert "abc" not in str(sent_back)
+
+def test_bash_missing_command_argument(monkeypatch):
+    seen = script(monkeypatch, [
+        reply(calls=[{"name": "bash", "args": {}}]),
+        reply(text="ok"),
+    ])
+    assert loop.run_agent("go") == "ok"
+    assert "command" in sent_back_after(seen)["error"]
+
+def test_failing_command_is_a_result_not_an_error(monkeypatch):
+    monkeypatch.setattr(approval, "ask", lambda c: True)
+    seen = script(monkeypatch, [
+        reply(calls=[{"name": "bash", "args": {"command": "exit 2"}}]),
+        reply(text="ok"),
+    ])
+    assert loop.run_agent("go") == "ok"
+    sent_back = sent_back_after(seen)
+    assert sent_back["result"].startswith("exit code: 2")
+    assert "error" not in sent_back
+
+# ---- step limit ----
+
+def test_stops_at_max_steps(monkeypatch, repo_root):
+    (repo_root / "a.txt").write_text("x")
+    call = {"name": "read_file", "args": {"path": "a.txt"}}
+    seen = script(monkeypatch, [reply(calls=[call]) for _ in range(10)])
+    monkeypatch.setattr(loop.config, "MAX_STEPS", 3)
+    with pytest.raises(loop.AgentError, match="3 steps"):
+        loop.run_agent("go")
+    assert len(seen) == 3
+
+def test_final_answer_on_the_last_allowed_step_is_returned(monkeypatch, repo_root):
+    (repo_root / "a.txt").write_text("x")
+    call = {"name": "read_file", "args": {"path": "a.txt"}}
+    script(monkeypatch, [reply(calls=[call]), reply(calls=[call]), reply(text="done")])
+    monkeypatch.setattr(loop.config, "MAX_STEPS", 3)
+    assert loop.run_agent("go") == "done"
+
+
+# ---- repeated failures ----
+
+def test_same_failing_call_stops_the_loop(monkeypatch):
+    monkeypatch.setattr(loop.config, "MAX_REPEATS", 3)
+    call = {"name": "read_file", "args": {}}
+    seen = script(monkeypatch, [reply(calls=[call]) for _ in range(10)])
+    with pytest.raises(loop.AgentError, match="read_file"):
+        loop.run_agent("go")
+    assert len(seen) == 3
+
+def test_error_message_includes_the_last_error(monkeypatch):
+    monkeypatch.setattr(loop.config, "MAX_REPEATS", 2)
+    call = {"name": "nope", "args": {}}
+    script(monkeypatch, [reply(calls=[call]) for _ in range(5)])
+    with pytest.raises(loop.AgentError, match="Unknown tool"):
+        loop.run_agent("go")
+
+def test_different_failing_calls_do_not_trigger(monkeypatch, repo_root):
+    monkeypatch.setattr(loop.config, "MAX_REPEATS", 2)
+    calls = [
+        reply(calls=[{"name": "read_file", "args": {"path": name}}])
+        for name in ("a", "b", "c")
+    ]
+    script(monkeypatch, calls + [reply(text="done")])
+    assert loop.run_agent("go") == "done"
+
+def test_argument_order_does_not_hide_a_repeat(monkeypatch):
+    monkeypatch.setattr(loop.config, "MAX_REPEATS", 2)
+    script(monkeypatch, [
+        reply(calls=[{"name": "nope", "args": {"a": 1, "b": 2}}]),
+        reply(calls=[{"name": "nope", "args": {"b": 2, "a": 1}}]),
+        reply(text="done"),
+    ])
+    with pytest.raises(loop.AgentError):
+        loop.run_agent("go")
+
+def test_success_resets_the_failure_count(monkeypatch):
+    monkeypatch.setattr(loop.config, "MAX_REPEATS", 2)
+    state = {"n": 0}
+    def flaky(path):
+        state["n"] += 1
+        if state["n"] != 2:
+            raise RuntimeError("fail")
+        return "ok"
+    monkeypatch.setattr(registry, "TOOLS", [make_tool("flaky", "x", ReadArgs, flaky)])
+    call = {"name": "flaky", "args": {"path": "a"}}
+    script(monkeypatch, [reply(calls=[call]) for _ in range(3)] + [reply(text="done")])
+    assert loop.run_agent("go") == "done"
+
+def test_counts_do_not_carry_over_between_runs(monkeypatch):
+    monkeypatch.setattr(loop.config, "MAX_REPEATS", 3)
+    call = {"name": "nope", "args": {}}
+    script(monkeypatch, [reply(calls=[call]), reply(calls=[call]), reply(text="done")])
+    assert loop.run_agent("first") == "done"
+    script(monkeypatch, [reply(calls=[call]), reply(calls=[call]), reply(text="done")])
+    assert loop.run_agent("second") == "done"

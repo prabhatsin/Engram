@@ -171,3 +171,25 @@ def test_chat_returns_model_content_untouched(monkeypatch):
     resp = fake_chat_response(text="ok")
     use(monkeypatch, resp)
     assert provider.chat(["hi"])["content"] is resp.candidates[0].content
+
+def test_chat_sends_system_prompt_and_tools(monkeypatch):
+    captured = {}
+    def generate_content(**kw):
+        captured.update(kw)
+        return fake_chat_response(text="ok")
+    client = SimpleNamespace(models=SimpleNamespace(generate_content=generate_content))
+    monkeypatch.setattr(provider, "get_client", lambda: client)
+    provider.chat(["hi"], [READ_FILE])
+    cfg = captured["config"]
+    assert cfg.system_instruction == config.SYSTEM_PROMPT
+    assert len(cfg.tools) == 1
+
+READ_FILE = {
+    "name": "read_file",
+    "description": "Read a text file and return its contents.",
+    "parameters": {
+        "type": "object",
+        "properties": {"path": {"type": "string", "description": "File path"}},
+        "required": ["path"],
+    },
+}

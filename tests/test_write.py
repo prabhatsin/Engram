@@ -1,6 +1,6 @@
 import os
 import pytest
-from engram import config
+from engram import config, session
 from engram.tools import write as write_mod
 from engram.tools.write import write_file
 
@@ -36,26 +36,47 @@ def test_refuses_to_overwrite_by_default(repo_root):
 def test_overwrite_replaces_content(repo_root):
     f = repo_root / "a.txt"
     f.write_text("original")
+    session.mark_read(str(f))
     out = write_file(str(f), "new", overwrite=True)
     assert f.read_text() == "new"
     assert out.startswith("Overwrote a.txt")
+
+def test_overwrite_unread_file_is_refused(repo_root):
+    f = repo_root / "a.txt"
+    f.write_text("original")
+    with pytest.raises(ValueError, match="not read"):
+        write_file(str(f), "new", overwrite=True)
+    assert f.read_text() == "original"
+
+def test_overwrite_after_outside_change_is_refused(repo_root):
+    f = repo_root / "a.txt"
+    f.write_text("original")
+    session.mark_read(str(f))
+    st = os.stat(f)
+    os.utime(f, ns=(st.st_atime_ns, st.st_mtime_ns + 5_000_000_000))
+    with pytest.raises(ValueError, match="changed since"):
+        write_file(str(f), "new", overwrite=True)
+    assert f.read_text() == "original"
 
 def test_overwrite_keeps_permissions(repo_root):
     f = repo_root / "run.sh"
     f.write_text("old")
     f.chmod(0o755)
+    session.mark_read(str(f))
     write_file(str(f), "new", overwrite=True)
     assert f.stat().st_mode & 0o777 == 0o755
 
 def test_no_temp_files_left_behind(repo_root):
     f = repo_root / "a.txt"
     f.write_text("old")
+    session.mark_read(str(f))
     write_file(str(f), "new", overwrite=True)
     assert sorted(os.listdir(repo_root)) == ["a.txt"]
 
 def test_failed_overwrite_keeps_original_and_cleans_up(monkeypatch, repo_root):
     f = repo_root / "a.txt"
     f.write_text("original")
+    session.mark_read(str(f))
     def boom(src, dst):
         raise OSError("disk exploded")
     monkeypatch.setattr(write_mod.os, "replace", boom)

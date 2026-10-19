@@ -26,6 +26,7 @@ def test_declaration_schema_is_clean():
     assert "title" not in params
     assert "title" not in params["properties"]["path"]
 
+
 def test_optional_args_are_not_required():
     decls = {d["name"]: d for d in registry.all_declarations()}
     assert decls["find_files"]["parameters"]["required"] == ["pattern"]
@@ -33,6 +34,8 @@ def test_optional_args_are_not_required():
     assert decls["write_file"]["parameters"]["required"] == ["path", "content"]
     assert "default" not in decls["find_files"]["parameters"]["properties"]["path"]
     assert decls["edit_file"]["parameters"]["required"] == ["path", "old_text", "new_text"]
+    assert decls["bash"]["parameters"]["required"] == ["command"]
+
 
 def test_unknown_tool_returns_none():
     assert registry.get_tool("nope") is None
@@ -48,7 +51,7 @@ def test_args_model_rejects_missing_path():
 
 def test_tool_names():
     assert registry.available_tool_names() == [
-        "read_file", "find_files", "search_text", "write_file", "edit_file"
+        "read_file", "find_files", "search_text", "write_file", "edit_file","bash"
     ]
 
 

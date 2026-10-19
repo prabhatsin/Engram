@@ -6,7 +6,7 @@ from . import provider,config,guard,session
 from .tools import registry
 from pydantic import ValidationError
 # from .import guard,session
-
+import json
 
 class AgentError(Exception):
     pass
@@ -53,7 +53,7 @@ def execute_tool(tool_call):
 
 #TODO: Due to edge cases and hardening this loop has become very , clumpsy lets take the tool running part
 #TODO: outside the loop for cleaner execution
-def run_agent(prompt):
+def run_agent(prompt,history=None):
 
     """The loop sends the conversation to Gemini; if the model asks for tools, it runs them, adds the 
     results to the history and asks again. It repeats until the model answers in plain text, and that 
@@ -65,7 +65,10 @@ def run_agent(prompt):
     #get the list of every tool’s model-facing description
     declarations = registry.all_declarations()
     steps=0
+    failure_counts = {}
     while True:
+        if steps >= config.MAX_STEPS:
+            raise AgentError(f"Stopped after {config.MAX_STEPS} steps without a final answer.")
         steps+=1
         # This try catch is when LLM call may fail mid_task , eg when gemini is down or rate limit or
         # retries run out
@@ -87,9 +90,23 @@ def run_agent(prompt):
         for tool_call in result["tool_calls"]:
             # tool_call: A plain dict {"name": ..., "args": {...}}, built by us in provider.py from a function_call
             
-            print(f"[tool] {tool_call['name']} {tool_call['args']}")
-            
+            # print(f"[tool] {tool_call['name']} {tool_call['args']}")
             tool_output = execute_tool(tool_call)
+
+            # # Stop the run if the exact same tool call (same name and arguments) keeps failing MAX_REPEATS 
+            # times; a success resets the count.
+            key = (tool_call["name"], json.dumps(tool_call["args"], sort_keys=True, default=str))
+            if "error" in tool_output:
+                failure_counts[key] = failure_counts.get(key, 0) + 1
+                if failure_counts[key] >= config.MAX_REPEATS:
+                    raise AgentError(
+                        f"Stopped: '{tool_call['name']}' failed {config.MAX_REPEATS} times "
+                        f"with the same arguments. Last error: {tool_output['error']}"
+                    )
+            else:
+                failure_counts.pop(key, None)
+
+
             tool_results.append(types.Part.from_function_response(
                 name=tool_call["name"],response=tool_output
             ))

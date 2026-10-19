@@ -34,6 +34,10 @@ def write_file(path, content, overwrite=False):
     if os.path.isdir(path):
         raise IsADirectoryError(f"'{rel}' is a directory, not a file")
     exists = os.path.exists(path)
+    if exists and not overwrite:
+        raise FileExistsError(
+            f"'{rel}' already exists. Use edit_file to change part of it, or set overwrite=true to replace the whole file."
+        )
     if exists:
         seen = session.read_mtime(path)
         if seen is None:
