@@ -1,6 +1,39 @@
 # CLI entry point
 import sys
-from . import loop, provider
+from . import loop, provider, session
+
+
+
+def show_answer(answer):
+    print(answer if answer else "(The model returned no text.)")
+
+def chat():
+    session.reset()                      # once per chat, not per turn
+    history = []
+    print("Engram chat. Type 'exit' to quit.")
+    while True:
+        try:
+            prompt = input("> ").strip()
+        except EOFError:                 # Ctrl+D
+            print()
+            return 0
+        except KeyboardInterrupt:        # Ctrl+C at the prompt
+            print()
+            return 130
+        if not prompt:
+            continue
+        if prompt in ("exit", "quit"):
+            return 0
+        try:
+            answer, history = loop.run_agent(prompt, history)
+        except (loop.AgentError, provider.ProviderError) as e:
+            print(f"Error: {e}", file=sys.stderr)    # history untouched, keep chatting
+            continue
+        except KeyboardInterrupt:                    # Ctrl+C mid-turn: drop the turn only
+            print("\n(cancelled)", file=sys.stderr)
+            continue
+        show_answer(answer)   # reuse your existing empty-answer labelling here
+
 
 
 def main(argv=None):
@@ -8,9 +41,11 @@ def main(argv=None):
     # fix the bug it is ["engram/main.py", "fix", "the", "bug"], and the first item is the script 
     # name, so [1:] drops it.
     args = sys.argv[1:] if argv is None else argv
+    if not args:
+        return chat()
     prompt = " ".join(args).strip()
     if not prompt:
-        print('Usage: python -m engram.main "what you want the agent to do"', file=sys.stderr)
+        print('Usage: python -m engram.main "task"   (or no arguments for chat)', file=sys.stderr)
         return 2
     try:
         answer,_ = loop.run_agent(prompt)
@@ -20,8 +55,10 @@ def main(argv=None):
     except (loop.AgentError, provider.ProviderError) as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
-    print(answer if answer else "(The model returned no text.)")
+    show_answer(answer)
     return 0
+
+
 
 
 if __name__ == "__main__":

@@ -9,26 +9,38 @@ Engram is built layer by layer. Each layer is finished, hardened and tested befo
 | Layer | What it is | Status |
 |---|---|---|
 | 1. Provider | Gemini client with retries, timeouts, clear errors | Done |
-| 2. Agent loop + tools | The think, act, observe cycle and the local tools | In progress |
+| 2. Agent loop + tools | The think, act, observe cycle and the local tools | Done (large-file paging deferred) |
 | 3. MCP / GitHub | Browse repos, issues and pull requests through MCP | Planned |
 | 4. Memory (Mem0) | Persistent project context and preferences across sessions | Planned |
-| 5. Production hardening | Context management, logging, evals, CLI polish | Planned |
+| 5. Production hardening | Context management, logging, evals, terminal UI | Planned |
 
 Layer 2 detail:
 
-| Item | Status |
-|---|---|
-| Loop: unknown tool, bad arguments, tool exceptions returned to the model | Done |
-| Loop: provider errors stop the run with a clean message | Done |
-| Loop: step limit | Planned |
-| Loop: stop on repeated identical failing calls | Planned |
-| Path guard (repo-only access, protected files) | Done |
-| Tools: `read_file`, `find_files`, `search_text`, `write_file`, `edit_file` | Done |
-| `read_file` truncation for huge files and line ranges | Planned |
-| Tool: `bash` (timeout, output cap, denylist, confirmation) | Planned |
-| CLI: clean error handling and Ctrl+C | Planned |
-| System prompt tuning | In progress |
-| Scripted end-to-end test (read, edit, run tests, answer) | Planned |
+| Piece | What it does | Status |
+|---|---|---|
+| Agent loop | Runs tools until the model gives a final answer; step limit, stops on repeated identical failures | Done |
+| Chat mode | Multi-turn conversation; agent can ask questions and take follow-ups; Ctrl+C cancels only the current turn | Done |
+| Turn rollback | A failed or cancelled turn leaves the conversation history unchanged | Done |
+| read_file | Reads text files; rejects directories and binary files | Done |
+| find_files / search_text | ripgrep-based search, capped results, skips secrets and junk dirs | Done |
+| write_file | Creates files; overwrite needs explicit flag and a fresh read; atomic write | Done |
+| edit_file | Exact-match replace; needs a fresh read; handles CRLF; atomic write | Done |
+| bash | Repo-root only, stripped env, timeout, capped output, denylist, y/N approval | Done |
+| Path guard | Blocks paths outside the repo and protected files (.env, .git) | Done |
+| Large-file paging | Truncation and line ranges for read_file | Deferred |
+
+## Usage
+
+    PYTHONPATH=src python -m engram.main            # chat mode
+    PYTHONPATH=src python -m engram.main "task"     # one-shot
+
+## Known limits
+
+- Conversation history is not trimmed yet; very long chats can hit the model's context limit.
+- bash is soft containment (approval prompt, denylist, timeout), not a sandbox.
+- Search skips hidden files and respects .gitignore.
+
+
 
 ## How it works
 

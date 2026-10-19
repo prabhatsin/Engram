@@ -1,5 +1,5 @@
 import pytest
-from engram import loop, main as main_mod, provider
+from engram import loop, main as main_mod, provider, session
 
 
 def fake_run(monkeypatch, behavior):
@@ -12,6 +12,20 @@ def fake_run(monkeypatch, behavior):
     monkeypatch.setattr(loop, "run_agent", run)
     return calls
 
+
+def feed(monkeypatch, *lines):
+    """Script what the user types. An exception item is raised instead of returned."""
+    it = iter(lines)
+    def fake_input(prompt=""):
+        item = next(it)
+        if isinstance(item, BaseException):
+            raise item
+        return item
+    monkeypatch.setattr("builtins.input", fake_input)
+
+
+# ---------- one-shot mode (prompt on the command line) ----------
+
 def test_prints_the_answer_and_exits_zero(monkeypatch, capsys):
     calls = fake_run(monkeypatch, "all done")
     assert main_mod.main(["fix", "the", "bug"]) == 0
@@ -23,7 +37,7 @@ def test_prompt_is_trimmed(monkeypatch):
     main_mod.main(["  hello  "])
     assert calls == ["hello"]
 
-@pytest.mark.parametrize("argv", [[], [""], ["   "]])
+@pytest.mark.parametrize("argv", [[""], ["   "]])
 def test_empty_prompt_shows_usage_and_skips_the_model(monkeypatch, capsys, argv):
     calls = fake_run(monkeypatch, "ok")
     assert main_mod.main(argv) == 2
@@ -64,3 +78,57 @@ def test_defaults_to_command_line_arguments(monkeypatch):
     assert main_mod.main() == 0
     assert calls == ["from argv"]
 
+
+# ---------- chat mode (no arguments) ----------
+
+def test_no_args_starts_chat(monkeypatch):
+    monkeypatch.setattr(main_mod.sys, "argv", ["engram"])
+    calls = fake_run(monkeypatch, "ok")
+    feed(monkeypatch, "hi", "exit")
+    assert main_mod.main() == 0
+    assert calls == ["hi"]
+
+def test_chat_exit_command(monkeypatch):
+    calls = fake_run(monkeypatch, "ok")
+    feed(monkeypatch, "exit")
+    assert main_mod.main([]) == 0
+    assert calls == []
+
+def test_chat_quit_command(monkeypatch):
+    fake_run(monkeypatch, "ok")
+    feed(monkeypatch, "quit")
+    assert main_mod.main([]) == 0
+
+def test_chat_ctrl_d_exits_zero(monkeypatch):
+    fake_run(monkeypatch, "ok")
+    feed(monkeypatch, EOFError())
+    assert main_mod.main([]) == 0
+
+def test_chat_ctrl_c_at_prompt_exits_130(monkeypatch):
+    fake_run(monkeypatch, "ok")
+    feed(monkeypatch, KeyboardInterrupt())
+    assert main_mod.main([]) == 130
+
+def test_chat_skips_empty_lines(monkeypatch):
+    calls = fake_run(monkeypatch, "ok")
+    feed(monkeypatch, "", "   ", "hi", "exit")
+    assert main_mod.main([]) == 0
+    assert calls == ["hi"]
+
+def test_chat_prints_each_answer(monkeypatch, capsys):
+    fake_run(monkeypatch, "pong")
+    feed(monkeypatch, "ping", "exit")
+    main_mod.main([])
+    assert "pong" in capsys.readouterr().out
+
+def test_chat_empty_answer_is_labelled(monkeypatch, capsys):
+    fake_run(monkeypatch, None)
+    feed(monkeypatch, "go", "exit")
+    assert main_mod.main([]) == 0
+    assert "no text" in capsys.readouterr().out
+
+def test_chat_passes_history_between_turns(monkeypatch):
+    seen = []
+    def run(prompt, history=None):
+        seen.append(list(history or []))
+        return "ok", (history or []) + [prompt]
