@@ -13,7 +13,7 @@ def main(argv=None):
         print('Usage: python -m engram.main "what you want the agent to do"', file=sys.stderr)
         return 2
     try:
-        answer = loop.run_agent(prompt)
+        answer,_ = loop.run_agent(prompt)
     except KeyboardInterrupt:
         print("\nInterrupted.", file=sys.stderr)
         return 130

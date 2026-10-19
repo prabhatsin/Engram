@@ -5,7 +5,7 @@ import pytest
 from engram import approval, config
 from engram.tools import bash as bash_mod
 from engram.tools.bash import run_bash, denied_reason, is_auto_approved
-
+from engram import loop, approval
 
 def answer(monkeypatch, yes=True):
     asked = []
@@ -224,3 +224,8 @@ def test_end_of_input_means_no(monkeypatch):
         raise EOFError
     monkeypatch.setattr("builtins.input", eof)
     assert approval.ask("ls") is False
+
+def test_bash_disables_python_bytecode_cache(monkeypatch, repo_root):
+    monkeypatch.setattr(approval, "ask", lambda c: True)
+    out = loop.execute_tool({"name": "bash", "args": {"command": "echo $PYTHONDONTWRITEBYTECODE"}})
+    assert out["result"].rstrip().endswith("1")

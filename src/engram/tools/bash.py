@@ -96,7 +96,10 @@ def is_auto_approved(command):
 
 def _env():
     # Only whitelisted variables reach the command, so GEMINI_API_KEY never does.
-    return {k: os.environ[k] for k in config.BASH_ENV_KEYS if k in os.environ}
+    env = {k: os.environ[k] for k in config.BASH_ENV_KEYS if k in os.environ}
+    # No .pyc caching: fast same-size edits (a - b -> a + b) could otherwise run stale code.
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    return env
 
 
 def _kill(proc):

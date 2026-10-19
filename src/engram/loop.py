@@ -59,9 +59,10 @@ def run_agent(prompt,history=None):
     results to the history and asks again. It repeats until the model answers in plain text, and that 
     text is the final result."""
 
-    #Start the history with the user’s prompt as the first message
-    history = [types.Content(role="user", parts=[types.Part(text=prompt)])]
-    session.reset()
+    # copy the caller's history so a failed turn never touches it (free rollback)
+    history = list(history or [])
+    history.append(types.Content(role="user", parts=[types.Part(text=prompt)]))
+
     #get the list of every tool’s model-facing description
     declarations = registry.all_declarations()
     steps=0
@@ -83,7 +84,7 @@ def run_agent(prompt,history=None):
         history.append(result["content"])
         if not result["tool_calls"]:
             # This breaks the loop as soon as we get the text
-            return result["text"]
+            return result["text"],history
     
         tool_results=[]
         # tool_results is our own list. It collects the results of every tool that ran in this turn.

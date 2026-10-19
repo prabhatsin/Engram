@@ -4,11 +4,11 @@ from engram import loop, main as main_mod, provider
 
 def fake_run(monkeypatch, behavior):
     calls = []
-    def run(prompt):
+    def run(prompt, history=None):          # matches the new signature
         calls.append(prompt)
         if isinstance(behavior, BaseException):
             raise behavior
-        return behavior
+        return behavior, []                 # same (text, history) shape as the real one
     monkeypatch.setattr(loop, "run_agent", run)
     return calls
 

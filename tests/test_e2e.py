@@ -47,7 +47,7 @@ def test_fix_a_failing_test_end_to_end(monkeypatch, repo_root):
         reply(text="Fixed add(): it subtracted instead of adding. Tests pass."),
     ])
 
-    answer = loop.run_agent("fix the failing test")
+    answer, _ = loop.run_agent("fix the failing test")
 
     assert answer.startswith("Fixed add()")
     assert (repo_root / "calc.py").read_text() == "def add(a, b):\n    return a + b\n"
@@ -70,7 +70,7 @@ def test_edit_before_reading_is_refused_then_recovers(monkeypatch, repo_root):
         reply(text="done"),
     ])
 
-    assert loop.run_agent("fix add") == "done"
+    assert loop.run_agent("fix add")[0] == "done"
 
     assert "not read" in result_of(seen[1])["error"]
     assert (repo_root / "calc.py").read_text() == "def add(a, b):\n    return a + b\n"
@@ -87,7 +87,7 @@ def test_declined_test_run_does_not_stop_the_task(monkeypatch, repo_root):
         reply(text="Fixed it, but you declined the test run so it is unverified."),
     ])
 
-    answer = loop.run_agent("fix add")
+    answer, _ = loop.run_agent("fix add")
 
     assert "unverified" in answer
     assert "declined" in result_of(seen[3])["error"]
@@ -105,7 +105,7 @@ def test_blocked_step_in_the_middle_does_not_derail_the_run(monkeypatch, repo_ro
         reply(text="done"),
     ])
 
-    assert loop.run_agent("fix add") == "done"
+    assert loop.run_agent("fix add")[0] == "done"
 
     blocked = result_of(seen[1])
     assert "Blocked" in blocked["error"]
