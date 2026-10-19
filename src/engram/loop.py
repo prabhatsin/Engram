@@ -2,10 +2,10 @@
 # The cycle, plus limits (max steps, repeat detection) and stop conditions
 
 from google.genai import types
-from . import provider,config
+from . import provider,config,guard,session
 from .tools import registry
 from pydantic import ValidationError
-from .import guard
+# from .import guard,session
 
 
 class AgentError(Exception):
@@ -61,6 +61,7 @@ def run_agent(prompt):
 
     #Start the history with the user’s prompt as the first message
     history = [types.Content(role="user", parts=[types.Part(text=prompt)])]
+    session.reset()
     #get the list of every tool’s model-facing description
     declarations = registry.all_declarations()
     steps=0
@@ -85,6 +86,9 @@ def run_agent(prompt):
         # tool_results is our own list. It collects the results of every tool that ran in this turn.
         for tool_call in result["tool_calls"]:
             # tool_call: A plain dict {"name": ..., "args": {...}}, built by us in provider.py from a function_call
+            
+            print(f"[tool] {tool_call['name']} {tool_call['args']}")
+            
             tool_output = execute_tool(tool_call)
             tool_results.append(types.Part.from_function_response(
                 name=tool_call["name"],response=tool_output

@@ -26,6 +26,15 @@ def declaration(tool):
         "parameters":schema,
     }
 
+
+
+
+
+
+
+
+
+
 #! Question whats this pop part ?? in schema and scheme .get properties ????
 
 '''

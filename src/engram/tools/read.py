@@ -5,6 +5,7 @@
 from pydantic import BaseModel,Field
 from  .tool import make_tool
 import os
+from .. import session
 class ReadArgs(BaseModel):
     path: str = Field(description="File path")## Field(description=...) attaches the explanation the model will read.
 
@@ -23,6 +24,7 @@ def read_file(path):
         raise ValueError(f"'{path}' is not a UTF-8 text file (it looks binary)")
     if "\x00" in text:
         raise ValueError(f"'{path}' is not a text file (it contains null bytes)")
+    session.mark_read(path)
     return text
 
 ## READ_FILE: the read_file tool, bundling what goes to LLM(via declaration) 

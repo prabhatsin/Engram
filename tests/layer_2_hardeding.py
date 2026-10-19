@@ -17,7 +17,6 @@ Loop hardening (loop.py)
 6.Provider errors mid-loop: stop with a clean message.
 #? Done
 
-
 read_file hardening (tools/read.py)
 7. File not found, a directory instead of a file, and binary files.
 #? Done
@@ -26,12 +25,16 @@ read_file hardening (tools/read.py)
 
 Guard (guard.py)
 9. Path check: block anything outside the repo folder, and call it before every tool runs.
-
+#?Done ? 
 Remaining tools
 10. search (grep/glob), so the agent can find files in a big repo.
-11. write_file.
-12. edit_file: exact-match replace that fails if the text isn’t found or isn’t unique, and refuses files not read this session.
-13. bash: timeout, output truncation, and an allowlist/denylist with confirmation.
+#? Done ?
+11. write_file. 
+#? Done?
+12. edit_file: exact-match replace that fails if the text isn't found or isn't unique, and refuses files not read this session.
+#? Done ?
+13. bash: timeout, output truncation, and an allowlist/denylist with confirmation. 
+#? DOne ? 
 
 Wrap-up
 14. main.py: handle errors and Ctrl+C cleanly.
@@ -39,3 +42,4 @@ Wrap-up
 16. A scripted end-to-end test: read, edit, run the tests, then answer.
 
 '''
+

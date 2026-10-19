@@ -185,3 +185,114 @@ def test_relative_path_resolves_against_repo_root(monkeypatch, tmp_path):
     ])
     assert loop.run_agent("go") == "ok"
     assert sent_back_after(seen)["result"] == "hello"
+
+
+def test_write_file_creates_file(monkeypatch, repo_root):
+    seen = script(monkeypatch, [
+        reply(calls=[{"name": "write_file", "args": {"path": "new/a.txt", "content": "hi"}}]),
+        reply(text="ok"),
+    ])
+    assert loop.run_agent("go") == "ok"
+    assert (repo_root / "new" / "a.txt").read_text() == "hi"
+    assert "Created" in sent_back_after(seen)["result"]
+
+def test_write_file_does_not_overwrite_by_default(monkeypatch, repo_root):
+    (repo_root / "a.txt").write_text("original")
+    seen = script(monkeypatch, [
+        reply(calls=[{"name": "write_file", "args": {"path": "a.txt", "content": "new"}}]),
+        reply(text="ok"),
+    ])
+    assert loop.run_agent("go") == "ok"
+    assert "FileExistsError" in sent_back_after(seen)["error"]
+    assert (repo_root / "a.txt").read_text() == "original"
+
+def test_write_file_overwrite_flag_works(monkeypatch, repo_root):
+    (repo_root / "a.txt").write_text("original")
+    script(monkeypatch, [
+        reply(calls=[{"name": "write_file", "args": {"path": "a.txt", "content": "new", "overwrite": True}}]),
+        reply(text="ok"),
+    ])
+    assert loop.run_agent("go") == "ok"
+    assert (repo_root / "a.txt").read_text() == "new"
+
+def test_write_to_env_is_blocked(monkeypatch, repo_root):
+    seen = script(monkeypatch, [
+        reply(calls=[{"name": "write_file", "args": {"path": ".env", "content": "KEY=1"}}]),
+        reply(text="ok"),
+    ])
+    assert loop.run_agent("go") == "ok"
+    assert "protected" in sent_back_after(seen)["error"]
+    assert not (repo_root / ".env").exists()
+
+def test_write_outside_repo_is_blocked(monkeypatch, repo_root):
+    outside = repo_root.parent / "escaped.txt"
+    seen = script(monkeypatch, [
+        reply(calls=[{"name": "write_file", "args": {"path": "../escaped.txt", "content": "x"}}]),
+        reply(text="ok"),
+    ])
+    assert loop.run_agent("go") == "ok"
+    assert "Blocked" in sent_back_after(seen)["error"]
+    assert not outside.exists()
+
+def test_write_missing_content_is_reported(monkeypatch, repo_root):
+    seen = script(monkeypatch, [
+        reply(calls=[{"name": "write_file", "args": {"path": "a.txt"}}]),
+        reply(text="ok"),
+    ])
+    assert loop.run_agent("go") == "ok"
+    assert "content" in sent_back_after(seen)["error"]
+    assert not (repo_root / "a.txt").exists()
+
+def test_edit_without_reading_is_refused(monkeypatch, repo_root):
+    (repo_root / "a.txt").write_text("hello")
+    seen = script(monkeypatch, [
+        reply(calls=[{"name": "edit_file", "args": {"path": "a.txt", "old_text": "hello", "new_text": "bye"}}]),
+        reply(text="ok"),
+    ])
+    assert loop.run_agent("go") == "ok"
+    assert "not read" in sent_back_after(seen)["error"]
+    assert (repo_root / "a.txt").read_text() == "hello"
+
+def test_read_then_edit_in_the_same_run(monkeypatch, repo_root):
+    (repo_root / "a.txt").write_text("hello world")
+    seen = script(monkeypatch, [
+        reply(calls=[{"name": "read_file", "args": {"path": "a.txt"}}]),
+        reply(calls=[{"name": "edit_file", "args": {"path": "a.txt", "old_text": "world", "new_text": "there"}}]),
+        reply(text="ok"),
+    ])
+    assert loop.run_agent("go") == "ok"
+    assert (repo_root / "a.txt").read_text() == "hello there"
+    assert "Edited" in seen[2][-1].parts[0].function_response.response["result"]
+
+def test_reads_do_not_carry_over_to_the_next_run(monkeypatch, repo_root):
+    (repo_root / "a.txt").write_text("hello")
+    script(monkeypatch, [
+        reply(calls=[{"name": "read_file", "args": {"path": "a.txt"}}]),
+        reply(text="ok"),
+    ])
+    loop.run_agent("first")
+    seen = script(monkeypatch, [
+        reply(calls=[{"name": "edit_file", "args": {"path": "a.txt", "old_text": "hello", "new_text": "bye"}}]),
+        reply(text="ok"),
+    ])
+    loop.run_agent("second")
+    assert "not read" in sent_back_after(seen)["error"]
+
+def test_file_created_by_write_can_be_edited(monkeypatch, repo_root):
+    seen = script(monkeypatch, [
+        reply(calls=[{"name": "write_file", "args": {"path": "n.txt", "content": "one"}}]),
+        reply(calls=[{"name": "edit_file", "args": {"path": "n.txt", "old_text": "one", "new_text": "two"}}]),
+        reply(text="ok"),
+    ])
+    assert loop.run_agent("go") == "ok"
+    assert (repo_root / "n.txt").read_text() == "two"
+
+def test_edit_env_file_is_blocked(monkeypatch, repo_root):
+    (repo_root / ".env").write_text("KEY=1")
+    seen = script(monkeypatch, [
+        reply(calls=[{"name": "edit_file", "args": {"path": ".env", "old_text": "1", "new_text": "2"}}]),
+        reply(text="ok"),
+    ])
+    assert loop.run_agent("go") == "ok"
+    assert "protected" in sent_back_after(seen)["error"]
+    assert (repo_root / ".env").read_text() == "KEY=1"

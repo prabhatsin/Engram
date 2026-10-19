@@ -44,3 +44,20 @@ RG_TIMEOUT_SECONDS = 15
 #-----------write tool-----------------
 
 MAX_WRITE_CHARS = 200_000
+
+#-------bash tool--------------------
+
+BASH_TIMEOUT_SECONDS = 60
+MAX_BASH_OUTPUT_BYTES = 10_000
+MAX_COMMAND_CHARS = 5_000
+BASH_ENV_KEYS = ("PATH", "HOME", "LANG", "LC_ALL", "TERM", "VIRTUAL_ENV", "PYTHONPATH")
+
+# The first three are limits: how long a command may run, how much output is kept, and 
+# how long the command text may be.
+
+'''
+BASH_ENV_KEYS is a whitelist of environment variables a command is allowed to see. Your load_dotenv() 
+puts GEMINI_API_KEY into the agent's own environment, and a command like env or echo $GEMINI_API_KEY 
+would otherwise print it. Commands get only these few variables.
+
+'''
