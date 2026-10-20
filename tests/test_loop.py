@@ -474,3 +474,44 @@ def test_failure_after_tool_call_rolls_back(monkeypatch):
     with pytest.raises(loop.AgentError):
         loop.run_agent("again", old)
     assert old == ["u1", "m1"]
+
+
+class Recorder(loop.Hooks):
+    def __init__(self):
+        self.events = []
+    def on_model_start(self, step): self.events.append(("start", step))
+    def on_model_end(self): self.events.append(("end",))
+    def on_tool_call(self, name, args): self.events.append(("call", name))
+    def on_tool_result(self, name, output): self.events.append(("result", name, "error" in output))
+
+
+def test_hooks_fire_in_order(monkeypatch, repo_root):
+    (repo_root / "a.txt").write_text("x")
+    script(monkeypatch, [
+        reply(calls=[{"name": "read_file", "args": {"path": "a.txt"}}]),
+        reply(text="ok"),
+    ])
+    rec = Recorder()
+    loop.run_agent("go", hooks=rec)
+    assert rec.events == [
+        ("start", 1), ("end",),
+        ("call", "read_file"), ("result", "read_file", False),
+        ("start", 2), ("end",),
+    ]
+
+
+def test_model_end_hook_runs_when_provider_fails(monkeypatch):
+    def boom(history, tools=None):
+        raise loop.provider.ProviderError("down")
+    monkeypatch.setattr(loop.provider, "chat", boom)
+    rec = Recorder()
+    with pytest.raises(loop.AgentError):
+        loop.run_agent("go", hooks=rec)
+    assert rec.events == [("start", 1), ("end",)]
+
+
+def test_tool_error_is_visible_to_hooks(monkeypatch):
+    script(monkeypatch, [reply(calls=[{"name": "nope", "args": {}}]), reply(text="ok")])
+    rec = Recorder()
+    loop.run_agent("go", hooks=rec)
+    assert ("result", "nope", True) in rec.events

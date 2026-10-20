@@ -49,16 +49,26 @@ def execute_tool(tool_call):
     except Exception as e:
         return {"error": f"Tool '{tool['name']}' failed: {type(e).__name__}: {e}"}
 
+#-------------------------#--------UI--------------------UI---------------------
+
+#? Whqat exacly is hooks ???--------------
+class Hooks:
+    """Display callbacks. Defaults do nothing, so the loop runs fine without a UI."""
+    def on_model_start(self, step): pass
+    def on_model_end(self): pass
+    def on_tool_call(self, name, args): pass
+    def on_tool_result(self, name, output): pass
 
 
-#TODO: Due to edge cases and hardening this loop has become very , clumpsy lets take the tool running part
-#TODO: outside the loop for cleaner execution
-def run_agent(prompt,history=None):
+#-------------------------------UI-------------------------UI-------------------------
+
+def run_agent(prompt,history=None,hooks=None):
 
     """The loop sends the conversation to Gemini; if the model asks for tools, it runs them, adds the 
     results to the history and asks again. It repeats until the model answers in plain text, and that 
     text is the final result."""
 
+    hooks = hooks or Hooks()
     # copy the caller's history so a failed turn never touches it (free rollback)
     history = list(history or [])
     history.append(types.Content(role="user", parts=[types.Part(text=prompt)]))
@@ -73,13 +83,15 @@ def run_agent(prompt,history=None):
         steps+=1
         # This try catch is when LLM call may fail mid_task , eg when gemini is down or rate limit or
         # retries run out
+        hooks.on_model_start(steps)  #! UI--------
         try:
             result=provider.chat(history,declarations)
         except provider.ProviderError as e:
             raise AgentError(
                 f"Model call failed at step {steps} ({steps - 1} completed): {e}"
             ) from e
-
+        finally:
+            hooks.on_model_end()      #! UI------------- # always runs: spinner stops on error and Ctrl+C too
         #stores the model’s raw message,in history
         history.append(result["content"])
         if not result["tool_calls"]:
@@ -90,10 +102,10 @@ def run_agent(prompt,history=None):
         # tool_results is our own list. It collects the results of every tool that ran in this turn.
         for tool_call in result["tool_calls"]:
             # tool_call: A plain dict {"name": ..., "args": {...}}, built by us in provider.py from a function_call
-            
+            hooks.on_tool_call(tool_call["name"], tool_call["args"]) #!------------UI
             # print(f"[tool] {tool_call['name']} {tool_call['args']}")
             tool_output = execute_tool(tool_call)
-
+            hooks.on_tool_result(tool_call["name"], tool_output)  #!--------------- UI
             # # Stop the run if the exact same tool call (same name and arguments) keeps failing MAX_REPEATS 
             # times; a success resets the count.
             key = (tool_call["name"], json.dumps(tool_call["args"], sort_keys=True, default=str))

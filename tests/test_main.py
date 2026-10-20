@@ -4,7 +4,7 @@ from engram import loop, main as main_mod, provider, session
 
 def fake_run(monkeypatch, behavior):
     calls = []
-    def run(prompt, history=None):          # matches the new signature
+    def run(prompt, history=None, hooks=None):          # matches the new signature
         calls.append(prompt)
         if isinstance(behavior, BaseException):
             raise behavior
@@ -129,6 +129,6 @@ def test_chat_empty_answer_is_labelled(monkeypatch, capsys):
 
 def test_chat_passes_history_between_turns(monkeypatch):
     seen = []
-    def run(prompt, history=None):
+    def run(prompt, history=None, hooks=None):
         seen.append(list(history or []))
         return "ok", (history or []) + [prompt]

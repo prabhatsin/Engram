@@ -1,6 +1,6 @@
 # CLI entry point
 import sys
-from . import loop, provider, session
+from . import loop, provider, session, ui
 
 
 
@@ -10,7 +10,8 @@ def show_answer(answer):
 def chat():
     session.reset()                      # once per chat, not per turn
     history = []
-    print("Engram chat. Type 'exit' to quit.")
+    hooks = ui.RichHooks()
+    ui.banner()
     while True:
         try:
             prompt = input("> ").strip()
@@ -25,14 +26,15 @@ def chat():
         if prompt in ("exit", "quit"):
             return 0
         try:
-            answer, history = loop.run_agent(prompt, history)
+            answer, history = loop.run_agent(prompt, history, hooks=hooks)
         except (loop.AgentError, provider.ProviderError) as e:
-            print(f"Error: {e}", file=sys.stderr)    # history untouched, keep chatting
+            ui.show_error(e)                         # history untouched, keep chatting
             continue
         except KeyboardInterrupt:                    # Ctrl+C mid-turn: drop the turn only
+            hooks.on_model_end()                     # belt and braces: spinner off
             print("\n(cancelled)", file=sys.stderr)
             continue
-        show_answer(answer)   # reuse your existing empty-answer labelling here
+        ui.show_answer(answer)
 
 
 
