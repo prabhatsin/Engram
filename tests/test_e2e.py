@@ -12,7 +12,7 @@ def reply(text=None, calls=None):
 def script(monkeypatch, replies):
     it = iter(replies)
     seen = []
-    def fake_chat(history, tools=None):
+    def fake_chat(history, tools=None, system=None):
         seen.append(list(history))
         return next(it)
     monkeypatch.setattr(provider, "chat", fake_chat)

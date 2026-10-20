@@ -14,7 +14,7 @@ def reply(text=None, calls=None):
 def script(monkeypatch, replies):
     it = iter(replies)
     seen = []
-    def fake_chat(history, tools=None):
+    def fake_chat(history, tools=None, system=None):
         seen.append(list(history))
         return next(it)
     monkeypatch.setattr(provider, "chat", fake_chat)
@@ -121,7 +121,7 @@ def test_ctrl_c_is_not_swallowed(monkeypatch):
 
 def failing_after(monkeypatch, replies):
     it = iter(replies)
-    def fake_chat(history, tools=None):
+    def fake_chat(history, tools=None, system=None):
         item = next(it)
         if isinstance(item, Exception):
             raise item
@@ -436,7 +436,7 @@ def test_counts_do_not_carry_over_between_runs(monkeypatch):
 
 def test_history_carries_over(monkeypatch):
     seen = []
-    def fake_chat(history, tools=None):
+    def fake_chat(history, tools=None, system=None):
         seen.append(len(history))
         return {"text": "ok", "tool_calls": [], "content": "model-turn"}
     monkeypatch.setattr(loop.provider, "chat", fake_chat)
@@ -449,7 +449,7 @@ def test_history_carries_over(monkeypatch):
 
 
 def test_failed_turn_leaves_history_untouched(monkeypatch):
-    def boom(history, tools=None):
+    def boom(history, tools=None, system=None):
         raise loop.provider.ProviderError("down")
     monkeypatch.setattr(loop.provider, "chat", boom)
 
@@ -463,7 +463,7 @@ def test_failure_after_tool_call_rolls_back(monkeypatch):
     # the real danger: model asked for a tool, then the next call fails
     replies = iter([{"text": "", "tool_calls": [{"name": "nope", "args": {}}],
                      "content": "m-call"}])
-    def fake_chat(history, tools=None):
+    def fake_chat(history, tools=None, system=None):
         try:
             return next(replies)
         except StopIteration:
@@ -501,7 +501,7 @@ def test_hooks_fire_in_order(monkeypatch, repo_root):
 
 
 def test_model_end_hook_runs_when_provider_fails(monkeypatch):
-    def boom(history, tools=None):
+    def boom(history, tools=None, system=None):
         raise loop.provider.ProviderError("down")
     monkeypatch.setattr(loop.provider, "chat", boom)
     rec = Recorder()
@@ -515,3 +515,12 @@ def test_tool_error_is_visible_to_hooks(monkeypatch):
     rec = Recorder()
     loop.run_agent("go", hooks=rec)
     assert ("result", "nope", True) in rec.events
+
+def test_system_prompt_reaches_the_provider(monkeypatch):
+    seen = {}
+    def fake_chat(history, tools=None, system=None):
+        seen["system"] = system
+        return {"text": "ok", "tool_calls": [], "content": "m"}
+    monkeypatch.setattr(loop.provider, "chat", fake_chat)
+    loop.run_agent("hi", system="REMEMBERED")
+    assert seen["system"] == "REMEMBERED"

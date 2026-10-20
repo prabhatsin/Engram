@@ -50,7 +50,7 @@ def execute_tool(tool_call):
         return {"error": f"Tool '{tool['name']}' failed: {type(e).__name__}: {e}"}
 
 #-------------------------#--------UI--------------------UI---------------------
-
+#TODO:
 #? Whqat exacly is hooks ???--------------
 class Hooks:
     """Display callbacks. Defaults do nothing, so the loop runs fine without a UI."""
@@ -62,7 +62,7 @@ class Hooks:
 
 #-------------------------------UI-------------------------UI-------------------------
 
-def run_agent(prompt,history=None,hooks=None):
+def run_agent(prompt,history=None,hooks=None,system=None):
 
     """The loop sends the conversation to Gemini; if the model asks for tools, it runs them, adds the 
     results to the history and asks again. It repeats until the model answers in plain text, and that 
@@ -85,7 +85,7 @@ def run_agent(prompt,history=None,hooks=None):
         # retries run out
         hooks.on_model_start(steps)  #! UI--------
         try:
-            result=provider.chat(history,declarations)
+            result=provider.chat(history,declarations,system=system)
         except provider.ProviderError as e:
             raise AgentError(
                 f"Model call failed at step {steps} ({steps - 1} completed): {e}"
@@ -125,9 +125,6 @@ def run_agent(prompt,history=None,hooks=None):
             ))
         history.append(types.Content(role="user",parts=tool_results))
         
-
-
-
 
 
 

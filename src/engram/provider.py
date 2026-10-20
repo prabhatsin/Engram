@@ -108,7 +108,7 @@ MAX_TOKENS: you set a low output limit (say 50 tokens) and asked for a long essa
 RECITATION: the model was about to output text too close to copyrighted material, so it stopped.
 
 ''' 
-def chat(history, tools=None):
+def chat(history, tools=None,system=None):
     #tools=None exists only so a plain "no-tools" call is also possible !
 
     if not history:
@@ -123,7 +123,7 @@ def chat(history, tools=None):
 
     gen_config = types.GenerateContentConfig(
         tools=tool_config,
-        system_instruction=config.SYSTEM_PROMPT)
+        system_instruction=system or config.SYSTEM_PROMPT)
 
     # Call Gemini (with retries on temporary failures).
     response = call_with_retry(client, history, gen_config)

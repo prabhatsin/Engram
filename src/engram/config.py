@@ -62,3 +62,12 @@ puts GEMINI_API_KEY into the agent's own environment, and a command like env or 
 would otherwise print it. Commands get only these few variables.
 
 '''
+
+#--------------memory------------------
+
+MEMORY_DIR = Path(os.getenv("ENGRAM_MEMORY_DIR", Path.home() / ".engram" / "memory"))
+MAX_RECALL = 20                       # cap facts injected into the system prompt
+EMBED_MODEL = "models/gemini-embedding-001"
+EMBED_DIMS = 768
+
+MAX_REMEMBER_MESSAGES = 20

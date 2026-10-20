@@ -65,3 +65,16 @@ def test_model_start_then_end_twice_is_safe(out):
     hooks.on_model_start(1)
     hooks.on_model_end()
     hooks.on_model_end()
+
+def test_show_memories_lists_facts(monkeypatch):
+    rec = Console(record=True, width=120)
+    monkeypatch.setattr(ui, "console", rec)
+    ui.show_memories(["tests run with pytest -q", "uses [black]"])
+    out = rec.export_text()
+    assert "pytest -q" in out and "[black]" in out
+
+def test_show_memories_empty_is_labelled(monkeypatch):
+    rec = Console(record=True, width=120)
+    monkeypatch.setattr(ui, "console", rec)
+    ui.show_memories([])
+    assert "No memories" in rec.export_text()

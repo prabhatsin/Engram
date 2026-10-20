@@ -3,6 +3,7 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.text import Text
 from . import loop
+from rich.table import Table
 
 # module-level so tests can swap them for Console(record=True)
 console = Console()
@@ -12,6 +13,19 @@ err_console = Console(stderr=True)
 KEY_ARGS = ("path", "command", "pattern", "query")
 
 
+
+
+def show_memories(facts):
+    if not facts:
+        console.print("[dim](No memories stored for this repo yet.)[/dim]")
+        return
+    table = Table(title="Stored memories (this repo)", show_lines=False)
+    table.add_column("#", justify="right", style="dim")
+    table.add_column("Memory")
+    for i, fact in enumerate(facts, 1):
+        table.add_row(str(i), Text(fact))      # Text(), not a plain string: a "[x]" in a fact
+    console.print(table)    
+                       # would otherwise be read as Rich markup
 def _short(text, limit):
     """First line only, cut to `limit` chars."""
     lines = str(text).strip().splitlines()
@@ -69,3 +83,4 @@ def show_answer(text):
 
 def show_error(msg):
     err_console.print(Text(f"Error: {msg}", style="red"))
+

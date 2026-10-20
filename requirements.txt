@@ -4,5 +4,5 @@ python-dotenv>=1.0
 pytest
 pydantic
 ripgrep
-
+mem0ai
 
