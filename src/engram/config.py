@@ -71,3 +71,10 @@ EMBED_MODEL = "models/gemini-embedding-001"
 EMBED_DIMS = 768
 
 MAX_REMEMBER_MESSAGES = 20
+
+
+#---------------------------
+
+MCP_START_TIMEOUT = 20          # seconds to connect
+MCP_CALL_TIMEOUT = 30           # seconds per tool call
+MAX_MCP_OUTPUT_CHARS = 20000    # cap what goes back to the model

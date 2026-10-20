@@ -13,6 +13,7 @@ dependencies = [
     "httpx",
     "rich>=13",
     "mem0ai",
+    "mcp>=1.9,<2",
 ]
 
 [project.scripts]
