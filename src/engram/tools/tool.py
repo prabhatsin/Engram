@@ -1,32 +1,36 @@
 
 #! tool.py: defines what a tool is so every tool file is built the same wayand builds the part of it that gets sent to the LLM.
 
-def make_tool(name, description, args_model, func,path_fields=()):
-    """Packs a tool's name, description, argument model and Python function into one dict."""
-    return {
+def make_tool(name, description, args_model, func, path_fields=(), schema=None):
+    """Packs a tool's name, description, argument model and Python function into one dict.
+    schema: optional ready-made JSON schema (used by MCP tools instead of args_model)."""
+    tool = {
         "name": name,
         "description": description,
         "args_model": args_model,
         "func": func,
         "path_fields": path_fields,
     }
+    if schema is not None:          # key only exists for MCP tools, so local tools are unchanged
+        tool["schema"] = schema
+    return tool
+
 
 # builds the model-facing part i.e what exactly goes inside the LLM
 def declaration(tool):
     """# Builds the model-facing view of a tool (name, description, argument schema), leaving out the function."""
-    schema=tool["args_model"].model_json_schema()
-    schema.pop("title",None)
-    for prop in schema.get("properties", {}).values():
-        prop.pop("title", None)
-        prop.pop("default", None)
-
+    schema = tool.get("schema")
+    if schema is None:
+        schema = tool["args_model"].model_json_schema()
+        schema.pop("title", None)
+        for prop in schema.get("properties", {}).values():
+            prop.pop("title", None)
+            prop.pop("default", None)
     return {
-        "name":tool["name"],
-        "description":tool["description"],
-        "parameters":schema,
+        "name": tool["name"],
+        "description": tool["description"],
+        "parameters": schema,
     }
-
-
 
 
 

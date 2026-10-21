@@ -104,3 +104,21 @@ def test_remember_never_sends_secrets(fake):
                     {"role": "assistant", "content": "ok"}])
     assert f.added == []
 
+def test_scrub_drops_secret_turn_and_its_reply():
+    msgs = [
+        {"role": "user", "content": "use black"}, {"role": "assistant", "content": "ok"},
+        {"role": "user", "content": "my API key is sk-test-12345"}, {"role": "assistant", "content": "noted"},
+        {"role": "user", "content": "run pytest -q"}, {"role": "assistant", "content": "ok"},
+    ]
+    assert [m["content"] for m in store.scrub(msgs)] == ["use black", "ok", "run pytest -q", "ok"]
+
+def test_scrub_catches_github_tokens():
+    msgs = [{"role": "user", "content": "token github_pat_AAAAAAAAAAAAAAAAAAAAAAAA"},
+            {"role": "assistant", "content": "ok"}]
+    assert store.scrub(msgs) == []
+
+def test_remember_never_sends_secrets(fake):
+    f = fake()
+    store.remember([{"role": "user", "content": "password = hunter2"},
+                    {"role": "assistant", "content": "ok"}])
+    assert f.added == []

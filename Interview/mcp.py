@@ -13,3 +13,5 @@ and prompts (reusable templates).
 4.It solves the N*M integration problem: without MCP, every agent needs custom code for every tool; 
 with MCP, you build a server once and it works everywhere.”
 '''
+def Hello():
+    pass

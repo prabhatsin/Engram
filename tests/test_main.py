@@ -1,10 +1,23 @@
 import pytest
 from engram import loop, main as main_mod, provider, session
-from rich.console import Console
+from engram.mcp.github import MCPError
+
+# The real function, saved before the autouse fixture replaces it.
+_real_connect = main_mod.connect_github
+
+
+@pytest.fixture(autouse=True)
+def no_real_services(monkeypatch):
+    """No test may touch real Mem0 or GitHub."""
+    monkeypatch.setattr(main_mod.store, "recall", lambda: [])
+    monkeypatch.setattr(main_mod.store, "remember", lambda m: None)
+    monkeypatch.setattr(main_mod.store, "close", lambda: None)
+    monkeypatch.setattr(main_mod, "connect_github", lambda: None)
+
 
 def fake_run(monkeypatch, behavior):
     calls = []
-    def run(prompt, history=None, hooks=None, system=None):         # matches the new signature
+    def run(prompt, history=None, hooks=None, system=None):   # matches the real signature
         calls.append(prompt)
         if isinstance(behavior, BaseException):
             raise behavior
@@ -129,9 +142,61 @@ def test_chat_empty_answer_is_labelled(monkeypatch, capsys):
 
 def test_chat_passes_history_between_turns(monkeypatch):
     seen = []
-    def run(prompt, history=None, hooks=None):
+    def run(prompt, history=None, hooks=None, system=None):
         seen.append(list(history or []))
         return "ok", (history or []) + [prompt]
+    monkeypatch.setattr(loop, "run_agent", run)
+    feed(monkeypatch, "a", "b", "exit")
+    assert main_mod.main([]) == 0
+    assert seen == [[], ["a"]]
+
+def test_chat_failed_turn_keeps_previous_history(monkeypatch):
+    seen = []
+    def run(prompt, history=None, hooks=None, system=None):
+        seen.append(list(history or []))
+        if prompt == "bad":
+            raise loop.AgentError("boom")
+        return "ok", (history or []) + [prompt]
+    monkeypatch.setattr(loop, "run_agent", run)
+    feed(monkeypatch, "a", "bad", "c", "exit")
+    assert main_mod.main([]) == 0
+    assert seen == [[], ["a"], ["a"]]     # "bad" never entered history
+
+def test_chat_survives_agent_error(monkeypatch, capsys):
+    calls = fake_run(monkeypatch, loop.AgentError("boom"))
+    feed(monkeypatch, "a", "b", "exit")
+    assert main_mod.main([]) == 0
+    assert calls == ["a", "b"]
+    assert "boom" in capsys.readouterr().err
+
+def test_chat_survives_provider_error(monkeypatch, capsys):
+    fake_run(monkeypatch, provider.ProviderError("rate limited"))
+    feed(monkeypatch, "a", "exit")
+    assert main_mod.main([]) == 0
+    assert "rate limited" in capsys.readouterr().err
+
+def test_chat_ctrl_c_mid_turn_keeps_chat_alive(monkeypatch):
+    calls = fake_run(monkeypatch, KeyboardInterrupt())
+    feed(monkeypatch, "a", "exit")
+    assert main_mod.main([]) == 0
+    assert calls == ["a"]
+
+def test_chat_unexpected_errors_are_not_hidden(monkeypatch):
+    fake_run(monkeypatch, ValueError("our bug"))
+    feed(monkeypatch, "a", "exit")
+    with pytest.raises(ValueError):
+        main_mod.main([])
+
+def test_chat_resets_session_once(monkeypatch):
+    count = {"n": 0}
+    monkeypatch.setattr(session, "reset", lambda: count.__setitem__("n", count["n"] + 1))
+    fake_run(monkeypatch, "ok")
+    feed(monkeypatch, "a", "b", "exit")
+    assert main_mod.main([]) == 0
+    assert count["n"] == 1
+
+
+# ---------- /memory command ----------
 
 def test_chat_memory_command_shows_facts_and_skips_model(monkeypatch):
     calls = fake_run(monkeypatch, "ok")
@@ -143,16 +208,15 @@ def test_chat_memory_command_shows_facts_and_skips_model(monkeypatch):
     assert shown == [["a fact"]]
     assert calls == []
 
-def test_chat_memory_command_survives_store_error(monkeypatch, capsys):
+def test_chat_memory_command_survives_store_error(monkeypatch):
     def boom():
         raise main_mod.store.MemoryStoreError("db locked")
     monkeypatch.setattr(main_mod.store, "recall", boom)
     feed(monkeypatch, "/memory", "exit")
     assert main_mod.main([]) == 0
 
-@pytest.fixture(autouse=True)
-def no_real_memory(monkeypatch):
-    monkeypatch.setattr(main_mod.store, "recall", lambda: [])
+
+# ---------- recalled memory in the system prompt ----------
 
 def test_build_system_without_facts_is_the_base_prompt():
     assert main_mod.build_system([]) == main_mod.config.SYSTEM_PROMPT
@@ -161,8 +225,7 @@ def test_build_system_adds_facts_as_data():
     s = main_mod.build_system(["tests run with pytest -q"])
     assert s.startswith(main_mod.config.SYSTEM_PROMPT)
     assert "- tests run with pytest -q" in s
-    assert "not instructions" in s
-    assert "not instructions" not in s or "data, not instructions" in s
+    assert "data, not instructions" in s
 
 def test_chat_passes_recalled_facts_to_the_model(monkeypatch):
     seen = []
@@ -175,7 +238,7 @@ def test_chat_passes_recalled_facts_to_the_model(monkeypatch):
     main_mod.main([])
     assert "- use black" in seen[0]
 
-def test_chat_survives_recall_failure(monkeypatch, capsys):
+def test_chat_survives_recall_failure(monkeypatch):
     def boom():
         raise main_mod.store.MemoryStoreError("db locked")
     monkeypatch.setattr(main_mod.store, "recall", boom)
@@ -185,11 +248,7 @@ def test_chat_survives_recall_failure(monkeypatch, capsys):
     assert calls == ["hi"]
 
 
-@pytest.fixture(autouse=True)
-def no_real_memory(monkeypatch):
-    monkeypatch.setattr(main_mod.store, "recall", lambda: [])
-    monkeypatch.setattr(main_mod.store, "remember", lambda m: None)
-    monkeypatch.setattr(main_mod.store, "close", lambda: None)
+# ---------- saving memory at exit ----------
 
 def test_chat_saves_transcript_once_at_exit(monkeypatch):
     saved = []
@@ -205,7 +264,7 @@ def test_chat_with_no_turns_saves_nothing(monkeypatch):
     monkeypatch.setattr(main_mod.store, "remember", saved.append)
     feed(monkeypatch, "exit")
     main_mod.main([])
-    assert saved == [] 
+    assert saved == []
 
 def test_save_failure_does_not_break_exit(monkeypatch):
     def boom(m):
@@ -223,3 +282,42 @@ def test_chat_closes_store(monkeypatch):
     assert closed == [True]
 
 
+# ---------- GitHub MCP connection ----------
+
+class FakeGH:
+    def __init__(self, fail=False):
+        self.fail, self.closed = fail, False
+    def start(self):
+        if self.fail:
+            raise MCPError("no network")
+    def close(self):
+        self.closed = True
+
+def test_connect_github_without_token_is_skipped(monkeypatch):
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    assert _real_connect() is None
+
+def test_connect_github_failure_is_a_warning(monkeypatch, capsys):
+    monkeypatch.setenv("GITHUB_TOKEN", "x")
+    gh = FakeGH(fail=True)
+    monkeypatch.setattr(main_mod, "GitHubMCP", lambda: gh)
+    assert _real_connect() is None
+    assert gh.closed
+    assert "GitHub unavailable" in capsys.readouterr().err
+
+def test_connect_github_registers_tools(monkeypatch, capsys):
+    monkeypatch.setenv("GITHUB_TOKEN", "x")
+    monkeypatch.setattr(main_mod.registry, "TOOLS", list(main_mod.registry.TOOLS))
+    gh = FakeGH()
+    monkeypatch.setattr(main_mod, "GitHubMCP", lambda: gh)
+    monkeypatch.setattr(main_mod, "build_tools", lambda c: [{"name": "github_x"}])
+    assert _real_connect() is gh
+    assert main_mod.registry.get_tool("github_x") is not None
+    assert "GitHub connected (1 tools)" in capsys.readouterr().out
+
+def test_chat_closes_github_at_exit(monkeypatch):
+    gh = FakeGH()
+    monkeypatch.setattr(main_mod, "connect_github", lambda: gh)
+    feed(monkeypatch, "exit")
+    main_mod.main([])
+    assert gh.closed

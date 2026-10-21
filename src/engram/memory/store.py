@@ -57,7 +57,8 @@ def recall():
 #! This stops to save sectrets in the memory , .........
 
 _SECRET = re.compile(
-    r"(sk-[A-Za-z0-9_\-]{8,}|AKIA[0-9A-Z]{12,}|gh[pousr]_[A-Za-z0-9]{20,}|AIza[0-9A-Za-z_\-]{20,}"
+    r"(sk-[A-Za-z0-9_\-]{8,}|AKIA[0-9A-Z]{12,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}"
+    r"|AIza[0-9A-Za-z_\-]{20,}"
     r"|(api[_ -]?key|secret|password|passwd|token)\s*(is|=|:)\s*\S+)",
     re.I,
 )

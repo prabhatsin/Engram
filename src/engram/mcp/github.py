@@ -1,4 +1,3 @@
-# Starts the GitHub server and converts its tools into your tool format
 
 """Sync bridge to GitHub's MCP server. The only file that imports the MCP SDK."""
 import asyncio

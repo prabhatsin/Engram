@@ -2,11 +2,13 @@
 import sys
 from . import config, loop, provider, session, ui
 from .memory import store
-
+import os
+from .mcp.github import GitHubMCP
+from .mcp.tools import build_tools
+from .tools import registry
 
 def show_answer(answer):
     print(answer if answer else "(The model returned no text.)")
-
 
 def build_system(facts):
     if not facts:
@@ -22,6 +24,7 @@ def build_system(facts):
         "and the user's current message always wins.\n"
         + notes
     )
+
 def run_chat(transcript):
     session.reset()                      # once per chat, not per turn
     history = []
@@ -69,13 +72,32 @@ def run_chat(transcript):
         transcript.append({"role": "assistant", "content": answer or ""})
 #-------------------------------------memory (save at chat exit)
 
+def connect_github():
+    """Connect to GitHub MCP and register its read tools. Returns the client, or None.
+    Optional feature: it never raises."""
+    if not os.environ.get("GITHUB_TOKEN"):
+        return None
+    client = GitHubMCP()
+    try:
+        client.start()
+        tools = build_tools(client)
+        registry.register(tools)
+    except Exception as e:                       # MCPError or anything from the SDK
+        ui.show_error(f"GitHub unavailable: {e}")
+        client.close()
+        return None
+    ui.console.print(f"[dim]GitHub connected ({len(tools)} tools)[/dim]")
+    return client
+
 def chat():
     transcript = []
+    github = connect_github()
     try:
         return run_chat(transcript)
     finally:
         save_memory(transcript)
-
+        if github:
+            github.close()
 
 def save_memory(transcript):
     if transcript:

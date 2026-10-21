@@ -30,3 +30,18 @@ def available_tool_names():
     """Lists the avauilable tool names """
     return [tool["name"] for tool in TOOLS]
 
+
+
+
+#--------------------------- added for mcp thing ----------------------
+
+def register(tools):
+    """Add tools (for example from MCP). A tool with an existing name replaces the old one."""
+    for tool in tools:
+        for i, existing in enumerate(TOOLS):
+            if existing["name"] == tool["name"]:
+                TOOLS[i] = tool
+                break
+        else:
+            TOOLS.append(tool)
+

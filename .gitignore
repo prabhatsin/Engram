@@ -1,16 +1,12 @@
-<<<<<<< HEAD
 .env
 config.yaml
 myenv/
 __pycache__/
 *.pyc
-=======
-
-/myenv
-.env
 execution_order.txt
 TODO.txt
+build/
+*.egg-info/
+.pytest_cache/
 
-
-
->>>>>>> 9c80df2 (execute layer by layer)
+Interview/
