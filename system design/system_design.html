@@ -1,0 +1,171 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Engram System Design</title>
+<style>
+:root{--bg:#fafaf9;--fg:#1c1917;--card:#fff;--line:#e7e5e4}
+@media (prefers-color-scheme:dark){:root{--bg:#1c1917;--fg:#f5f5f4;--card:#292524;--line:#44403c}}
+body{background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,sans-serif;margin:0;padding:24px 16px}
+main{max-width:1100px;margin:auto} section{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin:20px 0;overflow-x:auto}
+h2{font-size:17px;margin:0 0 12px}
+</style></head><body><main>
+<h1>Engram System Design</h1>
+<p>Generated from SYSTEM_DESIGN.md. See READING_PATH.md for the step-by-step code walkthrough.</p>
+<section><h2>1. High-level architecture</h2><pre class="mermaid">flowchart TB
+    User([User in terminal])
+
+    subgraph Entry[&quot;Entry layer&quot;]
+        PY[&quot;pyproject.toml&lt;br/&gt;engram = engram.main:main&quot;]
+        MAIN[&quot;main.py&lt;br/&gt;main() · chat() · run_chat()&quot;]
+        UI[&quot;ui.py&lt;br/&gt;RichHooks, banner, show_answer&quot;]
+    end
+
+    subgraph Core[&quot;Agent core&quot;]
+        LOOP[&quot;loop.py&lt;br/&gt;run_agent() · execute_tool()&quot;]
+        PROV[&quot;provider.py&lt;br/&gt;chat() · call_with_retry()&quot;]
+        CFG[&quot;config.py&lt;br/&gt;.env, limits, REPO_ROOT&quot;]
+        PROMPT[&quot;prompts/system.md&quot;]
+    end
+
+    subgraph ToolLayer[&quot;Tool layer&quot;]
+        REG[&quot;tools/registry.py&lt;br/&gt;TOOLS · get_tool · all_declarations · register&quot;]
+        TOOLDEF[&quot;tools/tool.py&lt;br/&gt;make_tool · declaration&quot;]
+        GUARD[&quot;guard.py&lt;br/&gt;check_args · resolve_in_repo&quot;]
+        SESS[&quot;session.py&lt;br/&gt;read mtimes (fresh-read check)&quot;]
+        APPR[&quot;approval.py&lt;br/&gt;ask() y/N&quot;]
+        READ[&quot;read.py&quot;]
+        SEARCH[&quot;search.py&lt;br/&gt;find_files · search_text&quot;]
+        WRITE[&quot;write.py&quot;]
+        EDIT[&quot;edit.py&quot;]
+        BASH[&quot;bash.py&quot;]
+    end
+
+    subgraph Ext[&quot;Optional integrations (chat mode only)&quot;]
+        MCPC[&quot;mcp/github.py&lt;br/&gt;GitHubMCP client (thread + asyncio)&quot;]
+        MCPT[&quot;mcp/tools.py&lt;br/&gt;build_tools: MCP tools → Engram tools&quot;]
+        MEM[&quot;memory/store.py&lt;br/&gt;recall · remember · scrub&quot;]
+    end
+
+    subgraph Outside[&quot;External services and resources&quot;]
+        GEM[(Gemini API)]
+        GH[(GitHub MCP server&lt;br/&gt;api.githubcopilot.com/mcp)]
+        QD[(&quot;Mem0 + Qdrant on disk&lt;br/&gt;~/.engram/memory&quot;)]
+        RG[[ripgrep rg]]
+        REPO[(&quot;Target git repo&lt;br/&gt;REPO_ROOT&quot;)]
+    end
+
+    User --&gt; PY --&gt; MAIN
+    MAIN --&gt; UI
+    MAIN --&gt; LOOP
+    MAIN --&gt; MCPC
+    MAIN --&gt; MEM
+    CFG --&gt; PROMPT
+    LOOP --&gt; PROV --&gt; GEM
+    LOOP --&gt; REG
+    LOOP --&gt; GUARD
+    REG --&gt; TOOLDEF
+    REG --&gt; READ &amp; SEARCH &amp; WRITE &amp; EDIT &amp; BASH
+    MCPC --&gt; MCPT --&gt; REG
+    MCPC &lt;--&gt; GH
+    MCPT --&gt; APPR
+    BASH --&gt; APPR
+    READ &amp; WRITE &amp; EDIT --&gt; SESS
+    SEARCH --&gt; RG
+    READ &amp; SEARCH &amp; WRITE &amp; EDIT &amp; BASH --&gt; REPO
+    MEM --&gt; QD
+    MEM --&gt; GEM
+    UI -.hooks.-&gt; LOOP
+</pre></section><section><h2>2. Program lifecycle (what runs when you type `engram`)</h2><pre class="mermaid">flowchart TD
+    A[&quot;engram ...args&quot;] --&gt; B[&quot;main.main(argv)&quot;]
+    B --&gt; C{args given?}
+    C -- yes --&gt; D[&quot;One-shot mode&lt;br/&gt;loop.run_agent(prompt)&quot;]
+    D --&gt; D2[&quot;show_answer() and exit 0&lt;br/&gt;(errors exit 1, Ctrl+C exits 130)&quot;]
+    C -- no --&gt; E[&quot;chat()&quot;]
+    E --&gt; F[&quot;connect_github()&lt;br/&gt;only if GITHUB_TOKEN is set&quot;]
+    F --&gt; F1[&quot;GitHubMCP.start()&quot;] --&gt; F2[&quot;mcp.tools.build_tools()&quot;] --&gt; F3[&quot;registry.register(tools)&quot;]
+    E --&gt; G[&quot;run_chat(transcript)&quot;]
+    G --&gt; G1[&quot;session.reset()&quot;]
+    G1 --&gt; G2[&quot;store.recall() → facts&quot;]
+    G2 --&gt; G3[&quot;build_system(facts)&lt;br/&gt;system.md + remembered notes&quot;]
+    G3 --&gt; H{{&quot;REPL: input(&#x27;&gt; &#x27;)&quot;}}
+    H -- &quot;/memory&quot; --&gt; H1[&quot;ui.show_memories(store.recall())&quot;] --&gt; H
+    H -- &quot;task&quot; --&gt; I[&quot;loop.run_agent(prompt, history, hooks, system)&quot;]
+    I --&gt; J[&quot;ui.show_answer(answer)&lt;br/&gt;append to transcript&quot;] --&gt; H
+    H -- &quot;exit / Ctrl+D&quot; --&gt; K[&quot;finally: save_memory(transcript)&lt;br/&gt;store.remember(last 20) → store.close()&quot;]
+    K --&gt; L[&quot;github.close()&quot;]
+</pre></section><section><h2>3. One agent turn (`loop.run_agent`)</h2><pre class="mermaid">sequenceDiagram
+    autonumber
+    participant M as main.py
+    participant L as loop.py
+    participant R as registry.py
+    participant P as provider.py
+    participant G as Gemini API
+    participant H as ui.RichHooks
+    participant T as tool func
+
+    M-&gt;&gt;L: run_agent(prompt, history, hooks, system)
+    L-&gt;&gt;L: copy history, append user prompt
+    L-&gt;&gt;R: all_declarations()
+    R--&gt;&gt;L: JSON schemas of every tool
+    loop until text answer (max 25 steps)
+        L-&gt;&gt;H: on_model_start (spinner)
+        L-&gt;&gt;P: chat(history, declarations, system)
+        P-&gt;&gt;G: generate_content (retry 429/5xx, backoff 2s·2^n)
+        G--&gt;&gt;P: response
+        P--&gt;&gt;L: {text, tool_calls, content}
+        L-&gt;&gt;H: on_model_end
+        L-&gt;&gt;L: history.append(content)
+        alt no tool_calls
+            L--&gt;&gt;M: (text, history)
+        else tool_calls present
+            loop each tool_call
+                L-&gt;&gt;H: on_tool_call
+                L-&gt;&gt;L: execute_tool(tool_call)
+                L-&gt;&gt;T: tool[&quot;func&quot;](**safe_args)
+                T--&gt;&gt;L: {&quot;result&quot;} or {&quot;error&quot;}
+                L-&gt;&gt;H: on_tool_result
+                L-&gt;&gt;L: repeat-failure check (3 strikes → AgentError)
+            end
+            L-&gt;&gt;L: history.append(function responses as role=user)
+        end
+    end
+</pre></section><section><h2>4. Tool execution pipeline (`loop.execute_tool`)</h2><pre class="mermaid">flowchart LR
+    TC[&quot;tool_call&lt;br/&gt;{name, args}&quot;] --&gt; A{&quot;registry.get_tool(name)&quot;}
+    A -- None --&gt; E1[&quot;error: Unknown tool&quot;]
+    A -- found --&gt; B{&quot;Pydantic&lt;br/&gt;args_model(**args)&quot;}
+    B -- ValidationError --&gt; E2[&quot;error: Invalid arguments&quot;]
+    B -- ok --&gt; C{&quot;guard.check_args&lt;br/&gt;path_fields → resolve_in_repo&quot;}
+    C -- GuardError --&gt; E3[&quot;error: Blocked&lt;br/&gt;(outside repo, .env, .git)&quot;]
+    C -- ok --&gt; D[&quot;tool func(**safe_args)&quot;]
+    D -- exception --&gt; E4[&quot;error: Tool failed&quot;]
+    D -- ok --&gt; OK[&quot;result&quot;]
+
+    subgraph Inside tool funcs
+        D1[&quot;read_file → session.mark_read&quot;]
+        D2[&quot;write/edit → needs fresh read (mtime) → atomic_write&quot;]
+        D3[&quot;bash → length cap → denylist → auto-approve or approval.ask → subprocess with stripped env, timeout, capped output&quot;]
+        D4[&quot;github_* write → approval.ask → client.call_tool&quot;]
+    end
+    D --- D1 &amp; D2 &amp; D3 &amp; D4
+</pre></section><section><h2>5. Module dependency graph (who imports whom)</h2><pre class="mermaid">flowchart LR
+    main --&gt; config &amp; loop &amp; provider &amp; session &amp; ui
+    main --&gt; store[&quot;memory/store&quot;]
+    main --&gt; ghmcp[&quot;mcp/github&quot;] &amp; mcptools[&quot;mcp/tools&quot;] &amp; registry[&quot;tools/registry&quot;]
+    ui --&gt; loop
+    loop --&gt; provider &amp; config &amp; guard &amp; session &amp; registry
+    provider --&gt; config
+    guard --&gt; config
+    registry --&gt; read &amp; search &amp; write &amp; edit &amp; bash &amp; tool[&quot;tools/tool&quot;]
+    read --&gt; tool &amp; session
+    search --&gt; tool &amp; config
+    write --&gt; tool &amp; config &amp; session
+    edit --&gt; tool &amp; config &amp; session &amp; write
+    bash --&gt; tool &amp; config &amp; approval
+    mcptools --&gt; tool &amp; approval
+    ghmcp --&gt; config
+    store --&gt; config
+</pre></section>
+</main>
+<script type="module">
+import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+mermaid.initialize({startOnLoad:true, theme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default'});
+</script></body></html>
